@@ -84,12 +84,15 @@ if (-not (Test-Path "$InstallDir\.venv")) {
 
 Write-Host ">> 安装依赖（首次约 2-3 分钟）..." -ForegroundColor Yellow
 & "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet 2>&1 | Out-Null
-& "$InstallDir\.venv\Scripts\python.exe" -m pip install -e "$InstallDir" --quiet 2>&1
 
+# 先安装包本身
+& "$InstallDir\.venv\Scripts\python.exe" -m pip install -e "$InstallDir" --quiet 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "!! 依赖安装失败，重试中..." -ForegroundColor Yellow
     & "$InstallDir\.venv\Scripts\python.exe" -m pip install -e "$InstallDir" 2>&1
 }
+
+# 再装核心依赖
+& "$InstallDir\.venv\Scripts\python.exe" -m pip install pyyaml httpx rich prompt-toolkit python-dotenv tzlocal jinja2 --quiet 2>&1
 
 # ─── 创建快捷方式 ────────────────────────────────────────────────────────────
 
