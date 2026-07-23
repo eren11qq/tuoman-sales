@@ -47,7 +47,7 @@ if (-not (Test-Path ".venv")) { python -m venv .venv }
 Write-Host ">> 安装依赖..." -ForegroundColor Yellow
 .venv\Scripts\python -m pip install --upgrade pip --quiet 2>$null
 .venv\Scripts\python -m pip install -e "." --quiet 2>$null
-.venv\Scripts\python -m pip install pyyaml httpx rich prompt-toolkit python-dotenv tzlocal jinja2 --quiet 2>$null
+.venv\Scripts\python -m pip install pyyaml httpx rich prompt-toolkit python-dotenv tzlocal jinja2 requests tiktoken openai --quiet 2>$null
 
 # PATH
 $venvPath = "$InstallDir\.venv\Scripts"
