@@ -94,18 +94,17 @@ if ($LASTEXITCODE -ne 0) {
 # 再装核心依赖
 & "$InstallDir\.venv\Scripts\python.exe" -m pip install pyyaml httpx rich prompt-toolkit python-dotenv tzlocal jinja2 --quiet 2>&1
 
-# ─── 创建快捷方式 ────────────────────────────────────────────────────────────
+# ─── 加入 PATH 提示 ─────────────────────────────────────────────────────────
 
-try {
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\拓漫.lnk")
-    $Shortcut.TargetPath = "$InstallDir\.venv\Scripts\python.exe"
-    $Shortcut.Arguments = "$InstallDir\cli.py"
-    $Shortcut.WorkingDirectory = $InstallDir
-    $Shortcut.Save()
-    Write-Host ">> 桌面快捷方式已创建" -ForegroundColor Green
-} catch {
-    Write-Host ">> 桌面快捷方式创建失败（可忽略）" -ForegroundColor Gray
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+$venvPath = "$InstallDir\.venv\Scripts"
+if ($userPath -notlike "*$venvPath*") {
+    try {
+        [Environment]::SetEnvironmentVariable("Path", "$userPath;$venvPath", "User")
+        Write-Host ">> 已添加到 PATH，重启终端后可直接运行 tuoman" -ForegroundColor Green
+    } catch {
+        Write-Host ">> PATH 添加失败，手动将以下目录加入 PATH：$venvPath" -ForegroundColor Gray
+    }
 }
 
 # ─── .env配置引导 ──────────────────────────────────────────────────────────
@@ -134,8 +133,10 @@ Write-Host @"
   ✅ 拓漫 TouMan 安装成功！
 
   启动方式：
-  ① 双击桌面「拓漫」图标
-  ② 或打开终端运行：
+  直接在终端运行：
+     tuoman
+
+  如果 tuoman 命令找不到，运行：
      cd $InstallDir
      .venv\Scripts\python cli.py
 
