@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   拓漫 TouMan — 一键安装脚本
-  用法: iex (irm https://你的域名/tuoman-install.ps1)
+  用法: iex (irm https://raw.githubusercontent.com/eren11qq/tuoman-sales/main/scripts/tuoman-install.ps1)
 #>
 
 param(
@@ -22,16 +22,22 @@ Write-Host @"
 
 "@ -ForegroundColor Cyan
 
-# ─── 检测或安装 Python ───────────────────────────────────────────────────────
+# ─── 检测 Python ─────────────────────────────────────────────────────────────
 
 $python = Get-Command python -ErrorAction SilentlyContinue
 if (-not $python) {
     Write-Host ">> 正在安装 Python 3.11..." -ForegroundColor Yellow
-    winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements
-    refreshenv
-    $python = Get-Command python -ErrorAction SilentlyContinue
+    try {
+        winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
+        refreshenv
+        $python = Get-Command python -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host ""
+    }
     if (-not $python) {
-        Write-Host "!! 请手动安装 Python 3.11: https://www.python.org/downloads/" -ForegroundColor Red
+        Write-Host "!! 未检测到 Python" -ForegroundColor Red
+        Write-Host "!! 请手动安装: https://www.python.org/downloads/" -ForegroundColor Red
+        Write-Host "!! 安装后重新运行此命令" -ForegroundColor Red
         exit 1
     }
 }
@@ -39,67 +45,97 @@ if (-not $python) {
 $ver = python --version 2>&1
 Write-Host ">> 检测到: $ver" -ForegroundColor Green
 
+# ─── 检测 Git ─────────────────────────────────────────────────────────────────
+
+$git = Get-Command git -ErrorAction SilentlyContinue
+if (-not $git) {
+    Write-Host ">> 正在安装 Git..." -ForegroundColor Yellow
+    try {
+        winget install Git.Git --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
+        refreshenv
+        $git = Get-Command git -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host ""
+    }
+    if (-not $git) {
+        Write-Host "!! 请手动安装 Git: https://git-scm.com/download/win" -ForegroundColor Red
+        exit 1
+    }
+}
+
 # ─── 克隆仓库 ────────────────────────────────────────────────────────────────
 
 if (Test-Path $InstallDir) {
     Write-Host ">> 目录已存在，更新中..." -ForegroundColor Yellow
-    Set-Location $InstallDir
+    Push-Location $InstallDir
     git pull
 } else {
-    Write-Host ">> 克隆 拓漫 TouMan..." -ForegroundColor Yellow
-    git clone https://github.com/eren11qq/tuoman-sales.git $InstallDir
-    Set-Location $InstallDir
+    Write-Host ">> 正在下载 拓漫 TouMan..." -ForegroundColor Yellow
+    git clone --depth 1 https://github.com/eren11qq/tuoman-sales.git $InstallDir
+    Push-Location $InstallDir
 }
 
-# ─── 创建虚拟环境 + 安装依赖 ──────────────────────────────────────────────────
+# ─── 创建虚拟环境 + 安装核心依赖 ──────────────────────────────────────────────
 
 if (-not (Test-Path "$InstallDir\.venv")) {
     Write-Host ">> 创建虚拟环境..." -ForegroundColor Yellow
     python -m venv .venv
 }
 
-Write-Host ">> 安装依赖..." -ForegroundColor Yellow
-& "$InstallDir\.venv\Scripts\pip.exe" install --upgrade pip
-& "$InstallDir\.venv\Scripts\pip.exe" install -e . 2>&1 | Out-Null
+Write-Host ">> 安装依赖（首次约 2-3 分钟）..." -ForegroundColor Yellow
+& "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet 2>&1 | Out-Null
+& "$InstallDir\.venv\Scripts\python.exe" -m pip install -e "$InstallDir" --quiet 2>&1
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "!! 依赖安装失败，重试中..." -ForegroundColor Yellow
+    & "$InstallDir\.venv\Scripts\python.exe" -m pip install -e "$InstallDir" 2>&1
+}
 
 # ─── 创建快捷方式 ────────────────────────────────────────────────────────────
 
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\拓漫.lnk")
-$Shortcut.TargetPath = "$InstallDir\.venv\Scripts\python.exe"
-$Shortcut.Arguments = "$InstallDir\cli.py"
-$Shortcut.WorkingDirectory = $InstallDir
-$Shortcut.Save()
+try {
+    $WshShell = New-Object -ComObject WScript.Shell
+    $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\拓漫.lnk")
+    $Shortcut.TargetPath = "$InstallDir\.venv\Scripts\python.exe"
+    $Shortcut.Arguments = "$InstallDir\cli.py"
+    $Shortcut.WorkingDirectory = $InstallDir
+    $Shortcut.Save()
+    Write-Host ">> 桌面快捷方式已创建" -ForegroundColor Green
+} catch {
+    Write-Host ">> 桌面快捷方式创建失败（可忽略）" -ForegroundColor Gray
+}
 
-# ─── 创建配置文件引导 ────────────────────────────────────────────────────────
+# ─── .env配置引导 ──────────────────────────────────────────────────────────
 
-if (-not (Test-Path "$env:LOCALAPPDATA\hermes\.env")) {
+$envPath = "$env:LOCALAPPDATA\hermes\.env"
+if (-not (Test-Path $envPath)) {
     Write-Host @"
 
-  下一步：配置 API Key
+  ⚠  还需要配置 API Key
 
-  在以下位置创建 .env 文件：
-  $env:LOCALAPPDATA\hermes\.env
+  创建文件: $envPath
+  写入内容（至少一个）:
 
-  写入你的 API Key，例如：
-  OPENAI_API_KEY=sk-...
-  DEEPSEEK_API_KEY=sk-...
+  OPENAI_API_KEY=sk-你的key
+  DEEPSEEK_API_KEY=sk-你的key
 
 "@ -ForegroundColor Yellow
 }
 
 # ─── 完成 ────────────────────────────────────────────────────────────────────
 
+Pop-Location
+
 Write-Host @"
 
-  ✅ 安装完成！
+  ✅ 拓漫 TouMan 安装成功！
 
   启动方式：
   ① 双击桌面「拓漫」图标
-  ② 或在命令行运行：
+  ② 或打开终端运行：
      cd $InstallDir
      .venv\Scripts\python cli.py
 
-  详细文档：https://github.com/eren11qq/tuoman-sales
+  首次启动需配置 API Key（见上方说明）
 
 "@ -ForegroundColor Green
