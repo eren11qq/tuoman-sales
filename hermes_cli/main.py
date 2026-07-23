@@ -2414,6 +2414,14 @@ def _resolve_use_tui(args) -> bool:
 
 def cmd_chat(args):
     """Run interactive chat CLI."""
+    # 拓漫首次启动向导 — 检测 API Key 并引导配置
+    try:
+        from hermes_cli.first_run import run_first_run_wizard
+        if not run_first_run_wizard():
+            sys.exit(0)
+    except Exception:
+        pass  # 向导失败不影响正常启动
+
     use_tui = _resolve_use_tui(args)
 
     _apply_safe_mode(args)
