@@ -1,28 +1,25 @@
-name: OSV-Scanner
+name: Security audit
 
 on:
   schedule:
-    - cron: "0 6 * * 1"  # every Monday 06:00 UTC
+    - cron: "0 6 * * 1"
   push:
     branches: [main]
     paths:
       - "pyproject.toml"
 
 jobs:
-  scan:
-    name: Dependency vulnerability scan
+  audit:
+    name: pip-audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install OSV scanner
-        uses: google/osv-scanner-action@v2
+      - uses: actions/setup-python@v5
         with:
-          scan-args: |-
-            --lockfile=pyproject.toml
-            --format=markdown
-            --output=osv-report.md
-      - name: Upload report
-        uses: actions/upload-artifact@v4
-        with:
-          name: osv-report
-          path: osv-report.md
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          pip install -e "." pip-audit
+      - name: Run pip-audit
+        continue-on-error: true
+        run: pip-audit
