@@ -41,8 +41,5 @@ jobs:
           pip install --upgrade pip
           pip install -e "." --quiet
           pip install pytest pytest-asyncio --quiet
-      - name: Install Playwright browsers
-        run: |
-          python -m playwright install chromium --with-deps 2>/dev/null || true
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short -q
