@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="拓漫 TouMan" width="100%">
+  <img src="assets/banner.svg" alt="拓漫 TouMan" width="100%">
 </p>
 
 # 拓漫 TouMan ☤

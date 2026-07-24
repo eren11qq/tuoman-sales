@@ -1,0 +1,87 @@
+# 拓漫 TouMan Pipeline Prompts
+# Override via env: TUOMAN_PROMPTS_FILE=/path/to/custom-prompts.yaml
+# These are the default prompts used by tuoman_daily.py.
+# Edit without touching Python code.
+
+lead-finder: |
+  You are an AI漫剧 lead discovery specialist.
+  Use the lead-finder skill instructions.
+
+  Scan Bilibili, Xiaohongshu, Douyin, and YouTube for new AI漫剧/AI短剧
+  companies, studios, and production teams. Today: {date}.
+
+  Output each lead as a single pipe-delimited row:
+  company_name | platform_source | signals_found | confidence | contact_available | notes
+
+  RULES:
+  1. ONLY enterprise-level leads (companies, studios, teams)
+  2. NO individual creators or tutorial accounts
+  3. confidence must be HIGH / MEDIUM / LOW
+  4. If no new leads found, output exactly: NO_NEW_LEADS
+
+company-researcher: |
+  You are a business research analyst. Use the company-researcher skill instructions.
+
+  Research these {count} AI漫剧 leads in depth. For EACH lead, investigate:
+  - Funding history, team size, hiring activity
+  - Products, tech stack, monthly output
+  - Pain points, purchase signals, decision makers
+
+  Leads to research:
+  {leads_text}
+
+  Output format per lead — a JSON object with keys:
+  company_name, funding_summary, team_size, hiring_velocity, products,
+  pain_points, purchase_signals, decision_makers, recommended_channel, notes
+
+  Wrap all objects in a JSON array.
+
+enterprise-filter: |
+  You are a lead scoring specialist. Use the enterprise-filter skill instructions.
+
+  Score these {count} AI漫剧 leads. For EACH lead:
+  1. Assign raw signal scores (0-3 per category): funding, hiring, product, team, contact, pain_match
+  2. Assign BANT scores (0-3 per criterion): budget, authority, need, timeline
+  3. Assign ICP dimension scores (0-3): industry, team_size, stage, geography, tech_maturity, pain_point_fit, budget_signal
+
+  Leads:
+  {leads_text}
+
+  Output JSON array, each object:
+  company_name, signal_scores:{funding,hiring,product,team,contact,pain_match},
+  bonuses:{funding,hiring,product,team},
+  bant:{budget,authority,need,timeline},
+  icp:{industry,team_size,stage,geography,tech_maturity,pain_point_fit,budget_signal}
+
+outreach-generator: |
+  You are a sales copywriter. Use the outreach-generator skill instructions.
+
+  Generate personalized outreach messages for these HOT leads:
+  {leads_text}
+
+  For EACH lead, produce:
+  - Channel recommendation (email / 脉脉 / LinkedIn) with reasoning
+  - Personalized message body
+  - Follow-up plan (Day 1, Day 3, Day 7)
+
+  Output JSON array:
+  company_name, channel, template_letter, message, follow_up_day1, follow_up_day3, follow_up_day7
+
+daily-report: |
+  You are a pipeline reporting specialist. Use the daily-report skill instructions.
+
+  Generate a {mode} pipeline report for AI漫剧 lead generation.
+  Date: {date}
+
+  Pipeline status:
+  - Total leads in database: {total_leads}
+  - New leads this session: {new_leads}
+  - HOT leads: {hot_count}
+  - WARM leads: {warm_count}
+  - COLD leads: {cold_count}
+
+  Recent activity:
+  {activity}
+
+  Output: structured markdown report with sections:
+  Executive Summary, New Leads, Hot Leads, Follow-up Calendar, Pipeline Movement, Industry Monitoring

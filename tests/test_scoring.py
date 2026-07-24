@@ -1,98 +1,79 @@
 """Tests for scripts.lib.scoring."""
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scripts.lib.scoring import (
-    compute_signal_score,
-    BANTScores,
-    compute_icp_score,
-    icp_tier,
-    compute_combined_score,
-    priority_tier,
+    compute_signal_score, BANTScores, compute_icp_score,
+    compute_combined_score, priority_tier, icp_tier,
 )
 
 
 class TestSignalScoring:
-    def test_perfect_score(self):
-        score = compute_signal_score(
-            {"funding": 3, "hiring": 3, "product": 3, "team": 3, "contact": 3, "pain_match": 3},
-            {"funding": 1, "hiring": 1}
+    def test_perfect(self):
+        s = compute_signal_score(
+            {k: 3 for k in ("funding","hiring","product","team","contact","pain_match")},
+            {k: 1 for k in ("funding","hiring","product","team")},
         )
-        assert score >= 9.0
-        assert score <= 10.0
+        assert abs(s - 10.0) < 0.01
 
-    def test_minimum_score(self):
-        score = compute_signal_score(
-            {"funding": 0, "hiring": 0, "product": 0, "team": 0, "contact": 0, "pain_match": 0}
+    def test_zero(self):
+        s = compute_signal_score(
+            {k: 0 for k in ("funding","hiring","product","team","contact","pain_match")},
         )
-        assert score == 0.0
+        assert abs(s - 0.0) < 0.01
 
-    def test_partial_score(self):
-        score = compute_signal_score(
-            {"funding": 2, "hiring": 2, "product": 1, "team": 1, "contact": 0, "pain_match": 1}
-        )
-        assert 3.0 <= score <= 7.0
+    def test_average(self):
+        s = compute_signal_score({"funding":1,"hiring":2,"product":1,"team":1,"contact":2,"pain_match":2})
+        assert 3.0 < s < 5.0
+
+    def test_clamp_upper(self):
+        s = compute_signal_score({k: 999 for k in ("funding","hiring","product","team","contact","pain_match")})
+        assert s <= 10.0
 
 
 class TestBANT:
-    def test_hot_bant(self):
-        bant = BANTScores(budget=3, authority=3, need=3, timeline=3)
-        assert bant.total == 12
-        assert bant.tier == "HOT"
+    def test_hot(self):
+        b = BANTScores(budget=3, authority=3, need=3, timeline=3)
+        assert b.total == 12 and b.tier == "HOT"
 
-    def test_warm_bant(self):
-        bant = BANTScores(budget=2, authority=2, need=2, timeline=2)
-        assert bant.total == 8
-        assert bant.tier == "WARM"
+    def test_warm(self):
+        b = BANTScores(budget=2, authority=2, need=2, timeline=2)
+        assert b.total == 8 and b.tier == "WARM"
 
-    def test_cold_bant(self):
-        bant = BANTScores(budget=0, authority=0, need=0, timeline=0)
-        assert bant.total == 0
-        assert bant.tier == "COLD"
+    def test_cold(self):
+        b = BANTScores(budget=1, authority=0, need=1, timeline=0)
+        assert b.tier == "COLD"
 
-
-class TestICPMatching:
-    def test_perfect_icp(self):
-        scores = {
-            "industry": 3, "team_size": 3, "stage": 3, "geography": 3,
-            "tech_maturity": 3, "pain_point_fit": 3, "budget_signal": 3,
-        }
-        pct = compute_icp_score(scores)
-        assert pct == 100.0
-        assert icp_tier(pct) == "CORE ICP"
-
-    def test_mid_icp(self):
-        scores = {
-            "industry": 2, "team_size": 2, "stage": 1, "geography": 2,
-            "tech_maturity": 1, "pain_point_fit": 2, "budget_signal": 1,
-        }
-        pct = compute_icp_score(scores)
-        assert 40.0 <= pct <= 70.0
-        assert icp_tier(pct) in ("ADJACENT ICP", "OUT OF SCOPE")
-
-    def test_empty_icp(self):
-        scores = {}
-        pct = compute_icp_score(scores)
-        assert pct == 0.0
-        assert icp_tier(pct) == "OUT OF SCOPE"
+    def test_boundary_hot(self):
+        assert BANTScores(budget=3, authority=3, need=2, timeline=2).tier == "HOT"
 
 
-class TestCombinedRanking:
-    def test_hot_combined(self):
-        bant = BANTScores(budget=3, authority=3, need=3, timeline=3)
-        score = compute_combined_score(signal_score=9.0, bant=bant, icp_pct=90.0)
-        assert score >= 8.0
-        assert priority_tier(score) == "HOT"
+class TestICP:
+    def test_perfect(self):
+        p = compute_icp_score({k: 3 for k in ("industry","team_size","stage","geography","tech_maturity","pain_point_fit","budget_signal")})
+        assert abs(p - 100.0) < 0.1
+        assert icp_tier(p) == "CORE ICP"
 
-    def test_cold_combined(self):
-        bant = BANTScores(budget=0, authority=0, need=0, timeline=0)
-        score = compute_combined_score(signal_score=1.0, bant=bant, icp_pct=20.0)
-        assert score <= 4.0
-        assert priority_tier(score) in ("COLD", "ON HOLD")
+    def test_zero(self):
+        assert abs(compute_icp_score({}) - 0.0) < 0.1
+        assert icp_tier(0) == "OUT OF SCOPE"
 
-    def test_priority_tier_boundaries(self):
+
+class TestCombined:
+    def test_hot_lead(self):
+        sig = compute_signal_score({k: 3 for k in ("funding","hiring","product","team","contact","pain_match")},
+                                    {k: 1 for k in ("funding","hiring","product","team")})
+        bant = BANTScores(3, 3, 3, 3)
+        icp = compute_icp_score({k: 3 for k in ("industry","team_size","stage","geography","tech_maturity","pain_point_fit","budget_signal")})
+        c = compute_combined_score(sig, bant, icp)
+        assert c > 9.0 and priority_tier(c) == "HOT"
+
+    def test_priority_boundaries(self):
         assert priority_tier(8.0) == "HOT"
-        assert priority_tier(7.0) == "WARM"
-        assert priority_tier(5.0) == "COLD"
-        assert priority_tier(3.0) == "ON HOLD"
+        assert priority_tier(7.9) == "WARM"
+        assert priority_tier(6.0) == "WARM"
+        assert priority_tier(5.9) == "COLD"
+        assert priority_tier(3.9) == "ON HOLD"
