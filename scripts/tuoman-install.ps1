@@ -81,7 +81,7 @@ if (-not (Test-Path ".venv")) {
     & $python -m venv .venv
     if ($LASTEXITCODE -ne 0) { Write-Err "venv 创建失败"; exit 1 }
 }
-$pip = "$InstallDir\.venv\Scripts\python.exe" -m pip
+$pythonExe = "$InstallDir\.venv\Scripts\python.exe"
 Write-Ok "虚拟环境已就绪"
 
 Write-Step "安装核心依赖..."
@@ -90,15 +90,15 @@ $coreDeps = @(
     "tenacity>=8.0.0", "python-dotenv>=1.0.0"
 )
 foreach ($dep in $coreDeps) {
-    & $pip install $dep --quiet 2>&1
+    & $pythonExe -m pip install $dep --quiet 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Warn "安装失败: $dep" }
 }
-& $pip install -e "." --quiet 2>&1
+& $pythonExe -m pip install -e "." --quiet 2>&1
 Write-Ok "依赖安装完成"
 
 # ── Step 5: Playwright Chromium ──
 Write-Step "安装 Playwright 浏览器..."
-.\.venv\Scripts\python -m playwright install chromium 2>&1
+& $pythonExe -m playwright install chromium 2>&1
 if ($LASTEXITCODE -eq 0) { Write-Ok "Chromium 安装完成" }
 else { Write-Warn "Chromium 安装失败，可手动运行: playwright install chromium" }
 
