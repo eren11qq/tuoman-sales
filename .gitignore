@@ -171,8 +171,13 @@ apps/desktop/demo/
 infographic/
 
 # Build artifacts
-tuoman_agent.egg-info/
 *.egg-info/
+
+# Cache
+.ruff_cache/
+
+# Hermes config
+cli-config.yaml
 
 # Generated reports
 reports/

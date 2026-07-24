@@ -30,6 +30,9 @@ tuoman = "tuoman.cli:main"
 [tool.setuptools.packages.find]
 include = ["tuoman", "tuoman.*"]
 
+[tool.setuptools.package-data]
+tuoman = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
