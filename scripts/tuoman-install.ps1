@@ -43,7 +43,12 @@ if (-not (Test-Path ".venv")) {
     python -m venv .venv
     Write-Host "  ✅ venv 创建完成"
 }
-.\.venv\Scripts\pip install -e . 2>&1 | Out-Null
+$pipResult = .\.venv\Scripts\pip install -e . 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  ❌ pip 安装失败: $pipResult" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
 Write-Host "  ✅ Python 依赖安装完成"
 
 # 4. Playwright
