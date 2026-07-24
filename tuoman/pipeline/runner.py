@@ -1,5 +1,5 @@
 """
-Pipeline Runner — 编排4个stage按序执行
+Pipeline Runner — 编排多 stage 按序执行
 """
 
 import json
@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from tuoman.llm.client import LLMClient
-from tuoman.models.lead import PlatformLead
+from tuoman.models.lead import PlatformLead, AnalyzedLead, LeadDatabase
 from tuoman.pipeline.finder import Finder
 from tuoman.pipeline.analyzer import Analyzer
 from tuoman.pipeline.outreach import OutreachGenerator
@@ -22,23 +22,54 @@ DATA_DIR = ROOT / "data"
 
 
 class PipelineRunner:
-    """管线编排器 — 负责4 stage的调度和错误处理"""
+    """管线编排器 — 支持全量运行和单 stage 运行"""
+
+    STAGES = ["finder", "analyzer", "outreach", "reporter"]
 
     def __init__(
         self,
         headless: bool = True,
         model: str = "gpt-4o",
         data_dir: Optional[Path] = None,
+        platforms: Optional[list[str]] = None,
     ):
         self.data_dir = data_dir or DATA_DIR
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.db = LeadDatabase(self.data_dir / "leads.db")
         llm = LLMClient(model=model)
-        self._finder = Finder(data_dir=self.data_dir, headless=headless)
+        self._finder = Finder(platforms=platforms, headless=headless, data_dir=self.data_dir)
         self._analyzer = Analyzer(llm=llm, data_dir=self.data_dir)
         self._outreach = OutreachGenerator(llm=llm, data_dir=self.data_dir)
         self._reporter = Reporter(llm=llm, data_dir=self.data_dir)
 
-    def run(self, keywords: Optional[list[str]] = None) -> dict:
+    def run_stage(self, stage: str, **kwargs) -> dict:
+        """运行单个 stage"""
+        stage_map = {
+            "finder": self._run_finder,
+            "analyzer": self._run_analyzer,
+            "outreach": self._run_outreach,
+            "reporter": self._run_reporter,
+        }
+        func = stage_map.get(stage)
+        if not func:
+            raise ValueError(f"未知 stage: {stage}，可用: {', '.join(self.STAGES)}")
+
+        today = date.today().isoformat()
+        logger.info("【单stage】%s", stage)
+        result = {"date": today, "stage": stage, "status": "pending"}
+
+        try:
+            output = func(**kwargs)
+            result["status"] = "ok"
+            if isinstance(output, list):
+                result["count"] = len(output)
+            return result
+        except Exception as e:
+            logger.error("Stage %s 失败: %s", stage, e, exc_info=True)
+            result["status"] = f"failed: {e}"
+            return result
+
+    def run(self) -> dict:
         """执行完整管线"""
         today = date.today().isoformat()
         logger.info("=" * 50)
@@ -47,64 +78,32 @@ class PipelineRunner:
 
         result = {
             "date": today,
-            "stage1_finder": {"status": "pending", "count": 0},
-            "stage2_analyzer": {"status": "pending", "count": 0},
-            "stage3_outreach": {"status": "pending", "count": 0},
-            "stage4_reporter": {"status": "pending"},
+            "stages": {},
         }
 
         # Stage 1: Finder
-        try:
-            logger.info("【Stage 1/4】Finder — B站爬取")
-            raw_leads = self._finder.run(keywords)
-            result["stage1_finder"]["status"] = "ok"
-            result["stage1_finder"]["count"] = len(raw_leads)
-        except Exception as e:
-            logger.error("Finder 失败: %s", e, exc_info=True)
-            result["stage1_finder"]["status"] = f"failed: {e}"
-            raw_leads = []
+        logger.info("【Stage 1/4】Finder — 跨平台爬取")
+        raw_leads = self._run_finder()
+        result["stages"]["finder"] = {"status": "ok", "count": len(raw_leads)}
 
         # Stage 2: Analyzer
-        try:
-            logger.info("【Stage 2/4】Analyzer — LLM分析")
-            if not raw_leads:
-                # 尝试从文件加载
-                raw_file = self.data_dir / f"raw_leads_{today}.json"
-                if raw_file.exists():
-                    raw_data = json.loads(raw_file.read_text(encoding="utf-8"))
-                    raw_leads = [PlatformLead.from_dict(d) for d in raw_data]
-                    logger.info("从文件加载 %d 条原始数据", len(raw_leads))
-
-            if raw_leads:
-                analyzed = self._analyzer.run(raw_leads)
-            else:
-                analyzed = []
-            result["stage2_analyzer"]["status"] = "ok"
-            result["stage2_analyzer"]["count"] = len(analyzed)
-        except Exception as e:
-            logger.error("Analyzer 失败: %s", e, exc_info=True)
-            result["stage2_analyzer"]["status"] = f"failed: {e}"
-            analyzed = []
+        logger.info("【Stage 2/4】Analyzer — LLM 分析")
+        analyzed = self._run_analyzer(raw_leads)
+        result["stages"]["analyzer"] = {"status": "ok", "count": len(analyzed)}
 
         # Stage 3: Outreach
-        try:
-            logger.info("【Stage 3/4】Outreach — 触达文案")
-            outreach = self._outreach.run(analyzed)
-            result["stage3_outreach"]["status"] = "ok"
-            result["stage3_outreach"]["count"] = len(outreach)
-        except Exception as e:
-            logger.error("Outreach 失败: %s", e, exc_info=True)
-            result["stage3_outreach"]["status"] = f"failed: {e}"
-            outreach = []
+        logger.info("【Stage 3/4】Outreach — 触达文案")
+        outreach = self._run_outreach(analyzed)
+        result["stages"]["outreach"] = {"status": "ok", "count": len(outreach)}
 
         # Stage 4: Reporter
-        try:
-            logger.info("【Stage 4/4】Reporter — 日报")
-            self._reporter.run(raw_leads, analyzed, outreach)
-            result["stage4_reporter"]["status"] = "ok"
-        except Exception as e:
-            logger.error("Reporter 失败: %s", e, exc_info=True)
-            result["stage4_reporter"]["status"] = f"failed: {e}"
+        logger.info("【Stage 4/4】Reporter — 日报")
+        self._run_reporter(raw_leads, analyzed, outreach)
+        result["stages"]["reporter"] = {"status": "ok"}
+
+        # 统计数据
+        stats = self.db.get_stats()
+        result["stats"] = stats
 
         # 保存管线结果
         result_path = self.data_dir / f"pipeline_result_{today}.json"
@@ -114,10 +113,75 @@ class PipelineRunner:
 
         logger.info("=" * 50)
         logger.info("管线完成!")
-        logger.info("  Finder:   %d UP主", result["stage1_finder"]["count"])
-        logger.info("  Analyzer: %d 条", result["stage2_analyzer"]["count"])
-        logger.info("  Outreach: %d 文案", result["stage3_outreach"]["count"])
-        logger.info("  Reports:  %s", ROOT / "reports" / today)
+        logger.info("  Finder:    %d 条新发现", len(raw_leads))
+        logger.info("  Analyzer:  %d 条分析", len(analyzed))
+        logger.info("  Outreach:  %d 条文案", len(outreach))
+        logger.info("  DB总计:    %d 条 (HOT=%d WARM=%d COLD=%d)",
+                     stats["total"], stats["hot"], stats["warm"], stats["cold"])
+        logger.info("  Reports:   %s", ROOT / "reports" / today)
         logger.info("=" * 50)
 
         return result
+
+    def _run_finder(self) -> list[PlatformLead]:
+        return self._finder.run()
+
+    def _run_analyzer(self, raw_leads: Optional[list[PlatformLead]] = None) -> list:
+        if not raw_leads:
+            # 从数据库加载今天未分析的
+            raw_leads = self._load_today_raw_leads()
+        if raw_leads:
+            return self._analyzer.run(raw_leads)
+        return []
+
+    def _run_outreach(self, analyzed=None) -> list:
+        if analyzed is None:
+            # 从数据库加载 HOT 线索
+            hot = [h for h in self.db.list_hot() if not h.get("outreach_status")]
+            # 转换为 AnalyzedLead
+            analyzed = []
+            for h in hot:
+                pd = PlatformLead(
+                    platform=h["platform"],
+                    author_name=h["author_name"],
+                    author_id=h["author_id"],
+                    author_url=h["author_url"],
+                    description=h.get("description", ""),
+                )
+                analyzed.append(AnalyzedLead(
+                    platform_data=pd,
+                    company_name=h.get("company_name", ""),
+                    confidence=h.get("confidence", "LOW"),
+                    priority="HOT",
+                    icp_score=h.get("icp_score", 0),
+                ))
+        return self._outreach.run(analyzed)
+
+    def _run_reporter(self, raw_leads=None, analyzed=None, outreach=None):
+        stats = self.db.get_stats()
+        self._reporter.run(
+            raw_leads or [],
+            analyzed or [],
+            outreach or [],
+            stats=stats,
+        )
+
+    def _load_today_raw_leads(self) -> list[PlatformLead]:
+        """从数据库加载今天爬取的未分析数据"""
+        with self.db._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM leads WHERE date(last_updated)=date('now') AND confidence='LOW'"
+            ).fetchall()
+        leads = []
+        for r in rows:
+            leads.append(PlatformLead(
+                platform=r["platform"],
+                author_name=r["author_name"],
+                author_id=r["author_id"],
+                author_url=r["author_url"],
+                description=r.get("description", ""),
+                follower_count=r.get("follower_count", 0),
+                video_count=r.get("video_count", 0),
+                is_verified=bool(r.get("is_verified", 0)),
+            ))
+        return leads

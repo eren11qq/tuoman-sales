@@ -1,19 +1,18 @@
 """
-Stage 2: Analyzer — LLM 分析原始爬取数据，提取企业信号 + BANT + ICP 评分
+Stage 2: Analyzer — LLM 分析爬取数据，提取企业信号 + BANT + ICP 评分
 """
 
 import json
 import logging
-from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from tuoman.models.lead import PlatformLead, AnalyzedLead
+from tuoman.models.lead import PlatformLead, AnalyzedLead, LeadDatabase
 from tuoman.llm.client import LLMClient
 
 logger = logging.getLogger("tuoman.pipeline.analyzer")
 
-SYSTEM_PROMPT = """你是拓漫TouMan的AI漫剧行业分析师。你的任务是从B站UP主数据中识别出真正的AI漫剧企业/工作室。
+SYSTEM_PROMPT = """你是拓漫TouMan的AI漫剧行业分析师。你的任务是从博主数据中识别出真正的AI漫剧企业/工作室。
 
 企业信号判断标准：
 1. 简介含"工作室"/"公司"/"团队"/"官方"/"企业认证" → 可能是企业
@@ -27,7 +26,7 @@ SYSTEM_PROMPT = """你是拓漫TouMan的AI漫剧行业分析师。你的任务�
 - BANT: 每项0-3分 (budget预算信号, authority决策权, need需求强度, timeline时间线)
 - ICP: 行业匹配度0-100 (AI漫剧领域越相关越高)
 
-输出严格的JSON格式：
+输出严格的JSON格式（不要用markdown代码块，直接输出纯JSON）：
 {
     "company_name": "提取的公司或工作室名称",
     "is_enterprise": true/false,
@@ -45,48 +44,48 @@ class Analyzer:
     def __init__(self, llm: Optional[LLMClient] = None, data_dir: Optional[Path] = None):
         self.llm = llm or LLMClient()
         self.data_dir = data_dir or (Path(__file__).parent.parent.parent / "data")
+        self.db = LeadDatabase(self.data_dir / "leads.db")
 
     def run(self, raw_leads: list[PlatformLead]) -> list[AnalyzedLead]:
-        """分析一批原始lead"""
+        """分析一批原始 lead，结果写入 LeadDatabase"""
         results: list[AnalyzedLead] = []
 
         for lead in raw_leads:
             try:
                 analyzed = self._analyze_one(lead)
                 results.append(analyzed)
+                self.db.update_analysis(analyzed)
             except Exception as e:
                 logger.warning("分析失败 %s: %s", lead.author_name, e)
-                results.append(AnalyzedLead(
+                fallback = AnalyzedLead(
                     platform_data=lead,
                     company_name=lead.author_name,
                     confidence="LOW",
                     priority="COLD",
                     analysis_summary=f"LLM分析失败: {e}",
-                ))
+                )
+                results.append(fallback)
+                self.db.update_analysis(fallback)
 
-        # 持久化
-        today = date.today().isoformat()
-        out_path = self.data_dir / f"analyzed_{today}.json"
-        out_path.write_text(
-            json.dumps([r.to_dict() for r in results], ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        stats = self.db.get_stats()
+        logger.info(
+            "分析完成: %d 条, 数据库累计: HOT=%d WARM=%d COLD=%d 总计=%d",
+            len(results), stats["hot"], stats["warm"], stats["cold"], stats["total"],
         )
-        logger.info("分析完成: %d 条, 已保存 %s", len(results), out_path)
-
         return results
 
     def _analyze_one(self, lead: PlatformLead) -> AnalyzedLead:
-        """单条LLM分析"""
-        user_prompt = f"""请分析这个B站UP主是否为AI漫剧企业/工作室：
+        """单条 LLM 分析"""
+        user_prompt = f"""请分析这个博主是否为AI漫剧企业/工作室：
 
-UP主名称: {lead.author_name}
+博主名称: {lead.author_name}
+平台: {lead.platform}
 UID: {lead.author_id}
 简介: {lead.description}
 粉丝数: {lead.follower_count}
 稿件数: {lead.video_count}
 企业认证: {'是' if lead.is_verified else '否'}
 搜索关键词命中: {', '.join(lead.keywords_matched)}
-最近作品: {', '.join(lead.recent_titles[:5])}
 检测到的信号: {json.dumps(lead.signals, ensure_ascii=False)}
 
 请严格按JSON格式输出分析结果。"""
@@ -100,8 +99,10 @@ UID: {lead.author_id}
             confidence = "LOW"
 
         bant = result.get("bant", {})
+        if not isinstance(bant, dict):
+            bant = {}
         icp_score = float(result.get("icp_score", 0))
-        analysis = result.get("analysis_summary", "")
+        analysis = result.get("analysis_summary", "") or ""
 
         # 计算优先级
         priority = self._calc_priority(confidence, bant, icp_score)

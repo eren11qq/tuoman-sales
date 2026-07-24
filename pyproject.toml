@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tuoman-agent"
-version = "0.20.0"
-description = "拓漫 TouMan — AI漫剧行业智能获客Agent（垂直领域版）"
+version = "0.21.0"
+description = "拓漫 TouMan — AI漫剧行业智能获客管线（垂直领域版）"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "拓漫 TouMan" }]
@@ -21,7 +21,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+]
+type = [
+    "pyright>=1.1.300",
 ]
 
 [project.scripts]
@@ -35,11 +38,23 @@ tuoman = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: 需要浏览器或网络连接",
+    "crawler: 爬虫测试（需要 Playwright）",
+]
 
 [tool.ruff]
 preview = true
 line-length = 120
+target-version = "py311"
 
 [tool.ruff.lint]
-select = ["PLW1514", "F", "E"]
-ignore = ["E501"]  # line-too-long: 中文长字符串和 Optional 类型提示需要
+select = ["PLW1514", "F", "E", "W"]
+ignore = ["E501"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+exclude = [".venv", "dist", "build"]
+reportMissingImports = true
+reportUnusedImport = true

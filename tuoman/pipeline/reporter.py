@@ -36,12 +36,16 @@ class Reporter:
         raw_leads: list[PlatformLead],
         analyzed: list[AnalyzedLead],
         outreach: list[dict],
+        stats: Optional[dict] = None,
     ) -> str:
         """生成日报"""
         today = date.today().isoformat()
         hot = [x for x in analyzed if x.priority == "HOT"]
         warm = [x for x in analyzed if x.priority == "WARM"]
         cold = [x for x in analyzed if x.priority == "COLD"]
+
+        if stats is None:
+            stats = {"total": 0, "hot": 0, "warm": 0, "cold": 0}
 
         # LLM增强报告
         hot_lines = ""
@@ -53,12 +57,13 @@ class Reporter:
 
         user_prompt = f"""拓漫获客管线日报 — {today}
 
-今日原始发现: {len(raw_leads)} 个UP主
+今日原始发现: {len(raw_leads)} 个博主
 完成分析: {len(analyzed)} 条
 HOT: {len(hot)}
 WARM: {len(warm)}
 COLD: {len(cold)}
 触达文案: {len(outreach)} 条
+数据库总计: {stats.get('total', 0)} 条
 
 HOT线索列表:
 {hot_lines}
@@ -70,19 +75,23 @@ HOT线索列表:
         summary = (
             f"# 拓漫获客日报 {today}\n\n"
             f"## 执行摘要\n\n"
-            f"- 今日发现: {len(raw_leads)} 个UP主\n"
+            f"- 今日发现: {len(raw_leads)} 个博主\n"
             f"- 完成分析: {len(analyzed)} 条\n"
             f"- 待跟进(HOT): {len(hot)} 个\n"
             f"- 持续关注(WARM): {len(warm)} 个\n"
-            f"- 已生成触达文案: {len(outreach)} 条\n\n"
+            f"- 已生成触达文案: {len(outreach)} 条\n"
+            f"- 数据库累计: {stats.get('total', 0)} 条\n\n"
         )
 
         if hot:
             summary += "## HOT 线索\n\n"
             for x in hot:
+                platform = x.platform_data.platform if hasattr(x, 'platform_data') and hasattr(x.platform_data, 'platform') else ""
+                url = x.platform_data.author_url if hasattr(x, 'platform_data') else ""
                 summary += f"- **{x.company_name}** (ICP: {x.icp_score:.0f}%)\n"
                 summary += f"  - {x.analysis_summary}\n"
-                summary += f"  - B站: {x.platform_data.author_url}\n\n"
+                if url:
+                    summary += f"  - {platform}: {url}\n\n"
 
         # 持久化
         reports_dir = Path(__file__).parent.parent.parent / "reports" / today

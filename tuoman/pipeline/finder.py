@@ -1,59 +1,97 @@
 """
-Stage 1: Finder — 用爬虫在B站搜索 AI漫剧 UP主，输出结构化原始数据
+Stage 1: Finder — 多平台爬虫，发现 AI漫剧 UP主/博主
+
+支持平台: B站、小红书 (可扩展)
+使用 Playwright 直接爬取，不依赖外部 API。
 """
 
-import json
 import logging
-from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from tuoman.models.lead import PlatformLead
-from tuoman.crawlers.bilibili import BilibiliCrawler, DEFAULT_KEYWORDS
+from tuoman.models.lead import PlatformLead, LeadDatabase
+from tuoman.crawlers.bilibili import BilibiliCrawler, DEFAULT_KEYWORDS as BILI_KEYWORDS
+from tuoman.crawlers.xiaohongshu import XiaohongshuCrawler, DEFAULT_KEYWORDS as XHS_KEYWORDS
 
 logger = logging.getLogger("tuoman.pipeline.finder")
 
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-
 
 class Finder:
-    """爬取 B站，发现 AI漫剧 UP主"""
+    """多平台爬虫调度 — 发现 AI漫剧企业线索"""
 
-    def __init__(self, data_dir: Optional[Path] = None, headless: bool = True):
-        self.data_dir = data_dir or DATA_DIR
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+    # 各平台默认关键词（平台可以覆盖）
+    PLATFORM_KEYWORDS: dict[str, list[str]] = {
+        "bilibili": BILI_KEYWORDS,
+        "xiaohongshu": XHS_KEYWORDS,
+    }
+
+    def __init__(
+        self,
+        platforms: Optional[list[str]] = None,
+        headless: bool = True,
+        data_dir: Optional[Path] = None,
+    ):
+        self.platforms = platforms or list(self.PLATFORM_KEYWORDS.keys())
         self.headless = headless
+        self.data_dir = data_dir or (Path(__file__).parent.parent.parent / "data")
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.db = LeadDatabase(self.data_dir / "leads.db")
 
-    def run(self, keywords: Optional[list[str]] = None) -> list[PlatformLead]:
-        """执行发现流程"""
-        crawler = BilibiliCrawler(headless=self.headless)
-        leads = crawler.search(keywords or DEFAULT_KEYWORDS)
+    def run(self, keywords: Optional[dict[str, list[str]]] = None) -> list[PlatformLead]:
+        """执行全平台发现流程
 
-        # 持久化
-        today = date.today().isoformat()
-        out_path = self.data_dir / f"raw_leads_{today}.json"
-        out_path.write_text(
-            json.dumps([lead.to_dict() for lead in leads], ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        Args:
+            keywords: {platform: [keyword, ...]} — 覆盖默认关键词
+        Returns:
+            本次新发现的 PlatformLead 列表
+        """
+        merged_keywords = {**self.PLATFORM_KEYWORDS, **(keywords or {})}
+        all_new_leads: list[PlatformLead] = []
+
+        for platform in self.platforms:
+            kw = merged_keywords.get(platform, [])
+            if not kw:
+                logger.info("跳过平台 %s: 无关键词", platform)
+                continue
+
+            try:
+                raw = self._crawl_platform(platform, kw)
+                new_leads = self._dedup_and_save(raw, platform)
+                all_new_leads.extend(new_leads)
+            except Exception as e:
+                logger.error("平台 %s 爬取失败: %s", platform, e, exc_info=True)
+
+        logger.info(
+            "Finder 完成: 本次新增 %d 条 (累计 %d)",
+            len(all_new_leads),
+            self.db.get_stats()["total"],
         )
-        logger.info("原始数据已保存: %s (%d 条)", out_path, len(leads))
+        return all_new_leads
 
-        # 同时更新总库
-        db_path = self.data_dir / "leads_db.json"
-        if db_path.exists():
-            existing = json.loads(db_path.read_text(encoding="utf-8"))
+    def _crawl_platform(self, platform: str, keywords: list[str]) -> list[PlatformLead]:
+        """调用对应平台的爬虫"""
+        logger.info("【%s】开始爬取 (%d 个关键词)", platform, len(keywords))
+
+        if platform == "bilibili":
+            crawler = BilibiliCrawler(headless=self.headless)
+            return crawler.search(keywords)
+        elif platform == "xiaohongshu":
+            crawler = XiaohongshuCrawler(headless=self.headless)
+            return crawler.search(keywords)
         else:
-            existing = []
-        existing_ids = {e["author_id"] for e in existing}
-        new_count = 0
-        for lead in leads:
-            if lead.author_id not in existing_ids:
-                existing.append(lead.to_dict())
-                existing_ids.add(lead.author_id)
-                new_count += 1
-        db_path.write_text(
-            json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        logger.info("总库已更新: %s (%d 总, %d 新增)", db_path, len(existing), new_count)
+            logger.warning("未知平台: %s, 跳过", platform)
+            return []
 
-        return leads
+    def _dedup_and_save(self, leads: list[PlatformLead], platform: str) -> list[PlatformLead]:
+        """去重入库，返回新增的 lead"""
+        new_leads: list[PlatformLead] = []
+        for lead in leads:
+            try:
+                is_new = self.db.upsert_platform_lead(lead)
+                if is_new:
+                    new_leads.append(lead)
+            except Exception as e:
+                logger.warning("入库失败 %s/%s: %s", platform, lead.author_id, e)
+
+        logger.info("  %s: %d 条中 %d 条新增", platform, len(leads), len(new_leads))
+        return new_leads
