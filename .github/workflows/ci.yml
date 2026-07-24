@@ -21,7 +21,7 @@ jobs:
       - name: Install ruff
         run: pip install ruff
       - name: Run ruff
-        run: ruff check tuoman/ scripts/daily.py --no-fix
+        run: ruff check tuoman/ scripts/ tests/ --no-fix
 
   test:
     name: Tests ${{ matrix.os }} py${{ matrix.python-version }}

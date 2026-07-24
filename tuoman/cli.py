@@ -17,7 +17,6 @@
 import argparse
 import logging
 import sys
-import shutil
 from pathlib import Path
 
 # Windows GBK 兼容
@@ -189,7 +188,7 @@ def cmd_chat(args=None):
 
     while True:
         try:
-            user_input = input(f"\n  ❯ ").strip()
+            user_input = input("\n  ❯ ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n  再见！")
             break
@@ -226,7 +225,7 @@ def cmd_chat(args=None):
             runner = PipelineRunner(model="gpt-4o")
             result = runner.run()
             s = result.get("stats", {})
-            print(f"  ✅ 完成! HOT={s.get('hot',0)} WARM={s.get('warm',0)} 总计={s.get('total',0)}")
+            print(f"  ✅ 完成! HOT={s.get('hot', 0)} WARM={s.get('warm', 0)} 总计={s.get('total', 0)}")
             continue
 
         # ── find ──
@@ -283,7 +282,7 @@ def cmd_chat(args=None):
             print(f"  找到 {len(rows)} 条:")
             for r in rows[:10]:
                 name = r.get("company_name") or r.get("author_name", "?")
-                print(f"    [{r['id']}] {name} | {r['platform']} | {r.get('priority','?')}")
+                print(f"    [{r['id']}] {name} | {r['platform']} | {r.get('priority', '?')}")
             continue
 
         # ── 其他 → LLM 理解 ──
@@ -299,12 +298,12 @@ def cmd_chat(args=None):
                     runner = PipelineRunner(model="gpt-4o")
                     result = runner.run()
                     s = result.get("stats", {})
-                    print(f"  ✅ 完成! HOT={s.get('hot',0)} WARM={s.get('warm',0)} 总计={s.get('total',0)}")
+                    print(f"  ✅ 完成! HOT={s.get('hot', 0)} WARM={s.get('warm', 0)} 总计={s.get('total', 0)}")
                 elif resp == "find":
                     print("  好的，搜索新线索")
                     runner = PipelineRunner(model="gpt-4o")
                     result = runner.run_stage("finder")
-                    print(f"  ✅ 发现 {result.get('count',0)} 条新线索")
+                    print(f"  ✅ 发现 {result.get('count', 0)} 条新线索")
                 elif resp == "hot":
                     rows = db.list_hot(10)
                     if rows:
