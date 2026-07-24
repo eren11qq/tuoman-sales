@@ -116,23 +116,6 @@ if (-not (Test-Path $envFile)) {
     }
 } else { Write-Ok ".env 已存在" }
 
-# ── Step 7: Desktop shortcut ──
-Write-Step "创建桌面快捷方式..."
-$desktopPath = [Environment]::GetFolderPath("Desktop")
-$shortcutPath = "$desktopPath\拓漫.lnk"
-if (-not (Test-Path $shortcutPath)) {
-    try {
-        $wshell = New-Object -ComObject WScript.Shell
-        $shortcut = $wshell.CreateShortcut($shortcutPath)
-        $shortcut.TargetPath = "$InstallDir\.venv\Scripts\python.exe"
-        $shortcut.Arguments = "-m tuoman.cli run"
-        $shortcut.WorkingDirectory = "$InstallDir"
-        $shortcut.Description = "拓漫 TouMan — AI漫剧行业智能获客助手"
-        $shortcut.Save()
-        Write-Ok "桌面快捷方式已创建"
-    } catch { Write-Warn "快捷方式创建失败: $_" }
-} else { Write-Ok "桌面快捷方式已存在" }
-
 # ── Done ──
 Pop-Location
 
@@ -144,10 +127,7 @@ Write-Host @"
 
   运行:
     cd $InstallDir
-    .venv\Scripts\python -m tuoman.cli run
-
-  或:
-    双击桌面「拓漫」图标
+    .venv\Scripts\python -m tuoman.cli
 
   其他命令:
     tuoman list hot      — 查看 HOT 线索
