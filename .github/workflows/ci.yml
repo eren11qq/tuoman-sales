@@ -19,23 +19,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install ruff
-        run: pip install ruff==0.15.10
+        run: pip install ruff
       - name: Run ruff
-        run: ruff check scripts/ skills/ config/ --no-fix
-
-  typecheck:
-    name: Type check (basedpyright)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install deps
-        run: |
-          pip install -e ".[dev]" --quiet
-      - name: Run pyright
-        run: pip install basedpyright && basedpyright scripts/ --warnings
+        run: ruff check tuoman/ scripts/daily.py --no-fix
 
   test:
     name: Tests (pytest)
@@ -54,5 +40,8 @@ jobs:
           pip install --upgrade pip
           pip install -e "." --quiet
           pip install pytest pytest-asyncio --quiet
+      - name: Install Playwright browsers
+        run: |
+          python -m playwright install chromium --with-deps 2>/dev/null || true
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short -q

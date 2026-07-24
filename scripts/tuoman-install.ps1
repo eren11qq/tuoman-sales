@@ -27,11 +27,12 @@ Write-Host "  ✅ $pyVer"
 Write-Host "`n[2/5] 获取代码..." -ForegroundColor Yellow
 if (Test-Path $INSTALL_DIR) {
     Push-Location $INSTALL_DIR
-    git pull origin main 2>&1 | Out-Null
+    git pull origin main 2>$null
     Pop-Location
     Write-Host "  ✅ 已更新到最新版"
 } else {
-    git clone $REPO_URL $INSTALL_DIR 2>&1
+    $null = git clone $REPO_URL $INSTALL_DIR 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Host "  ❌ Clone 失败" -ForegroundColor Red; exit 1 }
     Write-Host "  ✅ Clone 完成"
 }
 

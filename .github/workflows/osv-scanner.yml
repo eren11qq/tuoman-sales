@@ -7,7 +7,6 @@ on:
     branches: [main]
     paths:
       - "pyproject.toml"
-      - "uv.lock"
 
 jobs:
   scan:
@@ -19,7 +18,7 @@ jobs:
         uses: google/osv-scanner-action@v2
         with:
           scan-args: |-
-            --lockfile=uv.lock
+            --lockfile=pyproject.toml
             --format=markdown
             --output=osv-report.md
       - name: Upload report
