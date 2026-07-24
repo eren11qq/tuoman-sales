@@ -33,7 +33,7 @@ class Finder:
         today = date.today().isoformat()
         out_path = self.data_dir / f"raw_leads_{today}.json"
         out_path.write_text(
-            json.dumps([l.to_dict() for l in leads], ensure_ascii=False, indent=2),
+            json.dumps([lead.to_dict() for lead in leads], ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         logger.info("原始数据已保存: %s (%d 条)", out_path, len(leads))

@@ -4,13 +4,12 @@ Pipeline Runner — 编排4个stage按序执行
 
 import json
 import logging
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
 from tuoman.llm.client import LLMClient
-from tuoman.models.lead import PlatformLead, AnalyzedLead
+from tuoman.models.lead import PlatformLead
 from tuoman.pipeline.finder import Finder
 from tuoman.pipeline.analyzer import Analyzer
 from tuoman.pipeline.outreach import OutreachGenerator
@@ -101,7 +100,7 @@ class PipelineRunner:
         # Stage 4: Reporter
         try:
             logger.info("【Stage 4/4】Reporter — 日报")
-            report = self._reporter.run(raw_leads, analyzed, outreach)
+            self._reporter.run(raw_leads, analyzed, outreach)
             result["stage4_reporter"]["status"] = "ok"
         except Exception as e:
             logger.error("Reporter 失败: %s", e, exc_info=True)

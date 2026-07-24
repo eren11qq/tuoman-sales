@@ -42,7 +42,7 @@ class OutreachGenerator:
 
     def run(self, analyzed_leads: list[AnalyzedLead]) -> list[dict]:
         """为HOT leads生成触达文案"""
-        hot = [l for l in analyzed_leads if l.priority == "HOT"]
+        hot = [x for x in analyzed_leads if x.priority == "HOT"]
         if not hot:
             logger.info("没有HOT leads，跳过触达")
             return []

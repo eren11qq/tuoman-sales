@@ -7,7 +7,6 @@ MVP: 用 Playwright 打开 search.bilibili.com 搜索关键词，
 
 import logging
 import re
-import time
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -96,7 +95,9 @@ class BilibiliCrawler:
                 page.goto(url, wait_until="networkidle", timeout=self.timeout)
 
                 # 等搜索结果加载
-                page.wait_for_selector(".video-list-item,.bili-video-card", timeout=10000)
+                page.wait_for_selector(
+                    ".video-list-item,.bili-video-card", timeout=10000
+                )
 
                 # 提取搜索结果中的 UP主信息
                 up_entries = self._extract_search_results(page, keyword)
@@ -136,7 +137,9 @@ class BilibiliCrawler:
             # 去重 by UID
             seen = set()
             for link in up_links or []:
-                uid_match = re.search(r"space\.bilibili\.com/(\d+)", link.get("href", ""))
+                uid_match = re.search(
+                    r"space\.bilibili\.com/(\d+)", link.get("href", "")
+                )
                 if uid_match:
                     uid = uid_match.group(1)
                     if uid not in seen:

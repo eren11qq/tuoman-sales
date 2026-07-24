@@ -2,7 +2,6 @@
 Stage 4: Reporter — 汇总全管线数据，生成日报
 """
 
-import json
 import logging
 from datetime import date
 from pathlib import Path
@@ -40,11 +39,18 @@ class Reporter:
     ) -> str:
         """生成日报"""
         today = date.today().isoformat()
-        hot = [l for l in analyzed if l.priority == "HOT"]
-        warm = [l for l in analyzed if l.priority == "WARM"]
-        cold = [l for l in analyzed if l.priority == "COLD"]
+        hot = [x for x in analyzed if x.priority == "HOT"]
+        warm = [x for x in analyzed if x.priority == "WARM"]
+        cold = [x for x in analyzed if x.priority == "COLD"]
 
         # LLM增强报告
+        hot_lines = ""
+        for lead in hot[:10]:
+            bant = sum(int(lead.bant.get(k, 0)) for k in ("budget", "authority", "need", "timeline"))
+            hot_lines += f"- {lead.company_name} (ICP:{lead.icp_score:.0f}%, BANT:{bant})\n"
+        if not hot_lines:
+            hot_lines = "无"
+
         user_prompt = f"""拓漫获客管线日报 — {today}
 
 今日原始发现: {len(raw_leads)} 个UP主
@@ -55,8 +61,7 @@ COLD: {len(cold)}
 触达文案: {len(outreach)} 条
 
 HOT线索列表:
-{chr(10).join(f'- {l.company_name} (ICP:{l.icp_score:.0f}%, BANT:{sum(int(l.bant.get(k,0)) for k in ("budget","authority","need","timeline"))})' for l in hot[:10]) if hot else "无"}
-
+{hot_lines}
 请生成日报。"""
 
         md_report = self.llm.chat(REPORT_SYSTEM, user_prompt)
@@ -74,10 +79,10 @@ HOT线索列表:
 
         if hot:
             summary += "## HOT 线索\n\n"
-            for l in hot:
-                summary += f"- **{l.company_name}** (ICP: {l.icp_score:.0f}%)\n"
-                summary += f"  - {l.analysis_summary}\n"
-                summary += f"  - B站: {l.platform_data.author_url}\n\n"
+            for x in hot:
+                summary += f"- **{x.company_name}** (ICP: {x.icp_score:.0f}%)\n"
+                summary += f"  - {x.analysis_summary}\n"
+                summary += f"  - B站: {x.platform_data.author_url}\n\n"
 
         # 持久化
         reports_dir = Path(__file__).parent.parent.parent / "reports" / today
